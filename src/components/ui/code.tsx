@@ -1,56 +1,86 @@
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
-import { cva, type VariantProps } from "class-variance-authority"
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
+import rehypeStringify from "rehype-stringify";
+import rehypePrettyCode from "rehype-pretty-code";
 
-import { cn } from "@/lib/utils"
+import "../../styles/code.css";
+import { useEffect, useState } from "react";
 
-const codeVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
-      },
-      size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
-        icon: "h-10 w-10",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
+async function highlightCode(code: string) {
+  const file = await unified()
+    .use(remarkParse)
+    .use(remarkRehype)
+    .use(rehypePrettyCode, {
+      keepBackground: false,
+      theme: "vitesse-light",
+    })
+    .use(rehypeStringify)
+    .process(code);
 
-export interface CodeProps
-  extends React.HTMLAttributes<HTMLElement>,
-    VariantProps<typeof codeVariants> {
-  asChild?: boolean
+  return String(file);
 }
+//
+// const formattedCode = `
+// \`\`\` ${language} ${options}
+// ${code}
+// \`\`\`
+// `;
+// const highlightedCode = await highlightCode(formattedCode);
 
-const Code = React.forwardRef<HTMLButtonElement, CodeProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button"
-    return (
-      <Comp
-        className={cn(codeVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
+export function Code(props) {
+  const [formattedCode, setFormattedCode] = useState("");
+  const [selectedLines, setSelectedLines] = useState("");
+
+  const handleTextSelection = () => {
+    const selection = window.getSelection();
+    const selectedText = selection.toString();
+    setSelectedLines(selectedText);
+
+    const range = selection.getRangeAt(0);
+    const startNode = range.startContainer;
+    const endNode = range.endContainer;
+
+    const startLine = getLineNumber(startNode);
+    const endLine = getLineNumber(endNode);
+
+    setSelectedLines([startLine, endLine]);
+    console.log('Selected Text:', selectedText);
+    console.log('Selected Lines:', startLine, 'to', endLine);
+  };
+
+  const getLineNumber = (node) => {
+    const lines = node.parentElement.innerText.split('\n');
+    const lineNumber = lines.findIndex(line => line.includes(node.textContent)) + 1;
+    return lineNumber;
+  };
+
+  useEffect(() => {
+    async function LoadformattedCode(code, options) {
+      const language = options.lang;
+      const opt = options.options;
+      const formattedCode = `
+\`\`\` ${language} ${opt}
+${code}
+\`\`\` 
+`;
+      return await highlightCode(formattedCode);
+    }
+    LoadformattedCode(props.code, {
+      lang: "js",
+      options: "showLineNumbers",
+    }).then((e) => setFormattedCode(e));
+  }, [formattedCode, props.code]);
+
+  return (
+    <div>
+      <h3>Selected Text: {selectedLines}</h3>
+      <section
+        onMouseUp={handleTextSelection}
+        dangerouslySetInnerHTML={{
+          __html: formattedCode,
+        }}
       />
-    )
-  }
-)
-Code.displayName = "Button"
-
-export { Code , codeVariants }
+    </div>
+  );
+}
